@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,12 +8,8 @@ import joblib
 import json
 import os
 
-# --- 1. ASSET LOADING (with Caching for performance) ---
-
-# Use Streamlit's caching to load assets only once [6]
 @st.cache_resource
 def load_assets():
-    """Loads all necessary pre-trained assets from the 'assets' directory."""
     base_path = 'assets'
     model = joblib.load(os.path.join(base_path, 'like_predictor_model.joblib'))
     vectorizer = joblib.load(os.path.join(base_path, 'tfidf_vectorizer.joblib'))
@@ -23,14 +17,12 @@ def load_assets():
         metadata = json.load(f)
     return model, vectorizer, metadata
 
-# Load assets and handle potential errors
 try:
     model, vectorizer, metadata = load_assets()
 except FileNotFoundError:
     st.error("Model assets not found. Please run `save_model_assets.py` first.")
     st.stop()
 
-# Unpack metadata for easier access
 company_to_avg_likes = metadata['company_to_avg_likes']
 keyword_to_avg_likes = metadata['keyword_to_avg_likes']
 company_keys = list(company_to_avg_likes.keys())
@@ -38,8 +30,6 @@ keyword_keys = list(keyword_to_avg_likes.keys())
 feature_names = vectorizer.get_feature_names_out()
 global_median_company_likes = np.median(list(company_to_avg_likes.values()))
 default_keyword = max(keyword_to_avg_likes, key=keyword_to_avg_likes.get) if keyword_to_avg_likes else None
-
-# --- 2. FEATURE ENGINEERING FUNCTIONS (Mirroring your inference logic) ---
 
 def get_top_tfidf_word_from_text(text):
     text = re.sub(r'[^\w\s]', '', text.lower())
@@ -62,26 +52,20 @@ def get_avg_likes_for_keyword(tweet):
     closest = difflib.get_close_matches(top_keyword, keyword_keys, n=1, cutoff=0.6) if top_keyword else None
     return keyword_to_avg_likes[closest] if closest else keyword_to_avg_likes.get(default_keyword, 0)
 
-# --- 3. STREAMLIT USER INTERFACE ---
-
 st.set_page_config(page_title="Twitter Likes Predictor", page_icon="🐦", layout="centered")
 st.title("🐦 Twitter Likes Predictor")
 st.markdown("This app uses a machine learning model to estimate the number of likes a tweet might receive.")
 
-# Use a form for efficient input handling [7]
 with st.form("prediction_form"):
     tweet_input = st.text_area("Enter Tweet Text:", height=120, placeholder="What's happening?")
     company_input = st.selectbox("Select Company:", options=sorted(company_keys))
     submit_button = st.form_submit_button("Predict Likes")
-
-# --- 4. PREDICTION LOGIC ---
 
 if submit_button:
     if not tweet_input.strip():
         st.warning("⚠️ Please enter some text for the tweet.")
     else:
         with st.spinner("🤖 Analyzing tweet and predicting..."):
-            # Build the feature vector exactly as the model was trained
             features = {
                 'word_count': len(tweet_input.split()),
                 'char_count': len(tweet_input),
@@ -95,13 +79,8 @@ if submit_button:
             feature_order = ['word_count', 'char_count', 'has_media', 'sentiment', 'company_avg_likes', 'hashtag', 'avg_likes_for_keyword']
             input_df = pd.DataFrame([features], columns=feature_order)
 
-            # Make prediction on the log-transformed scale
             raw_prediction = model.predict(input_df)
-            
-            # Reverse the log transformation (e^x - 1)
             final_prediction = np.exp(raw_prediction) - 1
-            
-            # Ensure prediction is a non-negative integer
             final_prediction = max(0, int(final_prediction))
 
         st.subheader("📈 Prediction Result")
